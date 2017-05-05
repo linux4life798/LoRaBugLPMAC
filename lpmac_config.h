@@ -8,7 +8,9 @@
 #ifndef LPMAC_LPMAC_CONFIG_H_
 #define LPMAC_LPMAC_CONFIG_H_
 
-#define MAX_RETRIES 3
+#define RETRIES_MAX        3
+#define RETRIES_TIMEOUT_MS 1000
+
 #define LBT_ENABLED
 #define ID_FILTER_ENABLED
 

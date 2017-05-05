@@ -15,19 +15,23 @@ extern "C" {
 #include <stdbool.h>
 #include <radio.h>
 
+#define PRINTF_FMT_NODE_ID "%8.8X"
+
 typedef enum {
-    NETWORK_EVENT_NEIGHBOR_ADD,
-    NETWORK_EVENT_NEIGHBOR_REM,
-} network_event_t;
+    NEIGHBOR_EVENT_ADD,
+    NEIGHBOR_EVENT_REM,
+	NEIGHBOR_EVENT_UPDATE,
+} neighbor_event_t;
 
 typedef uint32_t node_id_t;
+typedef uint8_t  link_quality_t;
 
-typedef void (*network_event_fn_t)(network_event_t type, node_id_t id);
-typedef void (*rx_fn_t)(uint8_t *buf, size_t buf_size, node_id_t dst, uint8_t rssi);
+typedef void (*neighbor_event_fn_t)(neighbor_event_t type, node_id_t id, link_quality_t link_quality);
+typedef void (*rx_fn_t)(uint8_t *buf, size_t buf_size, node_id_t dst, link_quality_t link_quality);
 
 void
 LPMAC_Init(const struct Radio_s *radio,
-           network_event_fn_t network_updates_callback,
+           neighbor_event_fn_t neighbor_updates_callback,
            rx_fn_t rx_callback);
 bool
 LPMAC_Send(const uint8_t *buf, size_t len, node_id_t dst);
@@ -38,6 +42,9 @@ LPMAC_Send(const uint8_t *buf, size_t len, node_id_t dst);
  */
 bool
 LPMAC_Join();
+
+node_id_t
+LPMAC_MyId(node_id_t id);
 
 #ifdef __cplusplus
 }

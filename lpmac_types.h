@@ -21,6 +21,7 @@
 #define EVENT_RXERROR          Event_Id_04
 #define EVENT_CADDONE_DETECT   Event_Id_05
 #define EVENT_CADDONE_NODETECT Event_Id_06
+#define EVENT_TIMEOUT          Event_Id_07
 
 /* High Level Events */
 #define EVENT_JOIN             Event_Id_10
