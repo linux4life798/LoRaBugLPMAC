@@ -1,12 +1,12 @@
 /**
- * Define how errors are handled in LPMAC
+ * Define how errors are handled in LPMAC Neighbors
  *
  * @author Craig Hesling <craig@hesling.com>
- * @date Apr 28, 2017
+ * @date May 5, 2017
  */
 
-#ifndef LPMAC_LPMAC_ERRORS_H_
-#define LPMAC_LPMAC_ERRORS_H_
+#ifndef LPMAC_LPMAC_NEIGHBORS_ERRORS_H_
+#define LPMAC_LPMAC_NEIGHBORS_ERRORS_H_
 
 #include <stdio.h>
 #include <xdc/runtime/System.h>
@@ -15,7 +15,7 @@
 /**@def dprintf
  * Print formatted debugging messages
  */
-#define dprintf(format, args...) printf("# LPMAC: "##format, ##args); uartprintf("# LPMAC: "##format, ##args)
+#define dprintf(format, args...) printf("# LPMAC Neighbors: "##format, ##args); uartprintf("# LPMAC Neighbors: "##format, ##args)
 
 /**@def rerror
  * Handle runtime error
@@ -26,4 +26,4 @@
 // Could have pin toggle for debugging here
 //#include "io.h"
 
-#endif /* LPMAC_LPMAC_ERRORS_H_ */
+#endif /* LPMAC_LPMAC_NEIGHBORS_ERRORS_H_ */

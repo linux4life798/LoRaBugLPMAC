@@ -46,6 +46,10 @@ LPMAC_Join();
 node_id_t
 LPMAC_MyId(node_id_t id);
 
+void LPMAC_Announce();
+void LPMAC_Neighbors();
+void LPMAC_Clear();
+
 #ifdef __cplusplus
 }
 #endif

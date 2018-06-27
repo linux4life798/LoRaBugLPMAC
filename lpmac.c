@@ -20,7 +20,6 @@
 #include <ti/sysbios/BIOS.h>
 #include <ti/sysbios/knl/Task.h>
 #include <ti/sysbios/knl/Event.h>
-#include <ti/sysbios/knl/Queue.h>
 #include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/gates/GateMutexPri.h>
 
@@ -82,9 +81,6 @@ static Clock_Struct timeoutStruct;
 static uint16_t BufferSize = 0;
 static uint8_t Buffer[BUFFER_SIZE];
 
-static Queue_Struct neighborsQueueStruct;
-static Queue_Handle neighborsQueueHandle;
-
 static uint32_t myid = 0xFFFFFFFF;
 
 // Outgoing Buffers
@@ -141,6 +137,9 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) 
 		return;
 	}
 
+    // This heard must be before the following Event_post, since it may remove this neighbor
+    lpmac_neighbors_heard(hdr->src, rssi);
+
 #	ifdef ID_FILTER_ENABLED
 	{
 		uint8_t index;
@@ -152,7 +151,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) 
 		// If not a broadcast and we counldn't find our ID
 		if (hdr->dst_count != 0 && index == hdr->dst_count) {
 			// Do not process this message
-			dprintf("Dropping pkt for dst[0] = 0x%8.8X\n", hdr->dst[0]);
+			dprintf("Dropping pkt from %8.8X for dst[0] = 0x%8.8X\n", hdr->src, hdr->dst[0]);
 			return;
 		}
 	}
@@ -164,8 +163,7 @@ static void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) 
 	RssiValue = rssi;
 	SnrValue = snr;
 //    radios->Rx(0);
-	// This heard must be before the following Event_post, since it may remove this neighbor
-	lpmac_neighbors_heard(hdr->src, rssi);
+
 	Event_post(lpmacEventsHandle, EVENT_RXDONE);
 }
 
@@ -278,7 +276,7 @@ static void send(const pkt_hdr_t *hdr, char *data) {
 	do {
 		dprintf("CAD - Starting\n");
 		radios->StartCad();
-		dprintf("CAD - Started\n");
+//		dprintf("CAD - Started\n");
 		events = Event_pend(lpmacEventsHandle, Event_Id_NONE,
 				EVENT_CADDONE_DETECT | EVENT_CADDONE_NODETECT,
 				BIOS_WAIT_FOREVER);
@@ -398,8 +396,6 @@ static void lpmacTask(UArg arg0, UArg arg1) {
 			char hdr_buf[PKT_HDR_CALC_SIZE(0)];
 			hdr = (pkt_hdr_t *) &hdr_buf;
 
-			lpmac_neighbors_clear();
-
 			hdr->src = getmyid();
 			hdr->dst_count = 0; // Broadcast
 //            hdr->dst[0] = dst;
@@ -448,18 +444,15 @@ static void lpmacTask(UArg arg0, UArg arg1) {
 
 			switch (hdr->pkt_type) {
 			case PKT_TYPE_JOIN:
-				dprintf("Got JOIN with pkt_id=%d\n", hdr->pkt_id)
-				;
+				dprintf("Got JOIN with pkt_id=%d\n", hdr->pkt_id);
 				lpmac_neighbors_add(hdr->src, RssiValue);
 				break;
 			case PKT_TYPE_UNJOIN:
-				dprintf("Got UNJOIN with pkt_id=%d\n", hdr->pkt_id)
-				;
+				dprintf("Got UNJOIN with pkt_id=%d\n", hdr->pkt_id);
 				lpmac_neighbors_rem(hdr->src);
 				break;
 			case PKT_TYPE_ACK:
-				dprintf("Got ACK for pkt_id=%d\n", hdr->pkt_id)
-				;
+				dprintf("Got ACK for pkt_id=%d\n", hdr->pkt_id);
 				if (outgoing_hdr && (outgoing_hdr->pkt_id == hdr->pkt_id)) {
 					outgoing_hdr = NULL;
 					timeout_stop();
@@ -470,13 +463,11 @@ static void lpmacTask(UArg arg0, UArg arg1) {
 				break;
 			case PKT_TYPE_DATA:
 				// Let user know about data recv
-				dprintf("Got DATA with pkt_id=%d\n", hdr->pkt_id)
-				;
+				dprintf("Got DATA with pkt_id=%d\n", hdr->pkt_id);
 				rx_fn(PKT_DATA_PTR(hdr), hdr->data_size, hdr->src, RssiValue);
 				break;
 			default:
-				dprintf("Bad packet type\n")
-				;
+				dprintf("Bad packet type\n");
 				continue;
 			}
 			// Allow to go into Rx Mode again
@@ -489,6 +480,7 @@ static void lpmacTask(UArg arg0, UArg arg1) {
 				timeout_start(RETRIES_TIMEOUT_MS);
 			} else {
 				// Failed to send
+			    lpmac_neighbors_failed(outgoing_hdr->dst[0]);
 				outgoing_hdr = NULL;
 				Event_post(lpmacRequestEventsHandle, EVENT_SENDDONE_FAIL);
 			}
@@ -516,9 +508,6 @@ void LPMAC_Init(const struct Radio_s *radio,
 	rx_fn = rx_callback;
 	lpmac_neighbors_init(neighbor_updates_callback);
 	timeout_init();
-
-//    Queue_construct(&neighborsQueueStruct, NULL);
-//    neighborsQueueHandle = Queue_handle(&neighborsQueueStruct);
 
 	Event_construct(&lpmacEventsStruct, NULL);
 	lpmacEventsHandle = Event_handle(&lpmacEventsStruct);
@@ -566,9 +555,16 @@ bool LPMAC_Send(const uint8_t *buf, size_t len, node_id_t dst) {
 
 bool LPMAC_Join() {
 	// Set request to join
+
+    lpmac_neighbors_clear();
+
 	Event_post(lpmacEventsHandle, EVENT_JOIN);
-	Event_pend(lpmacRequestEventsHandle, Event_Id_NONE, EVENT_JOINDONE,
-			BIOS_WAIT_FOREVER);
+	Event_pend(lpmacRequestEventsHandle, Event_Id_NONE, EVENT_JOINDONE, BIOS_WAIT_FOREVER);
+
+	Task_sleep(TIME_MS * 2000);
+
+    Event_post(lpmacEventsHandle, EVENT_JOIN);
+    Event_pend(lpmacRequestEventsHandle, Event_Id_NONE, EVENT_JOINDONE, BIOS_WAIT_FOREVER);
 	return true;
 }
 
@@ -578,4 +574,16 @@ node_id_t LPMAC_MyId(node_id_t id) {
 	} else {
 		return (myid = id);
 	}
+}
+
+void LPMAC_Announce() {
+    Event_post(lpmacEventsHandle, EVENT_JOIN);
+    Event_pend(lpmacRequestEventsHandle, Event_Id_NONE, EVENT_JOINDONE, BIOS_WAIT_FOREVER);
+}
+void LPMAC_Neighbors() {
+    lpmac_neighbors_show();
+}
+
+void LPMAC_Clear() {
+    lpmac_neighbors_clear();
 }
